@@ -1,0 +1,11 @@
+CREATE TABLE flights (
+flight_id SERIAL PRIMARY KEY,
+flight_no VARCHAR(20) UNIQUE NOT NULL,
+airline VARCHAR(50) NOT NULL,
+source VARCHAR(50) NOT NULL,
+destination VARCHAR(50) NOT NULL,
+departure_time TIME NOT NULL,
+arrival_time TIME NOT NULL,
+price DECIMAL(10,2) NOT NULL,
+total_seats INT NOT NULL
+);
