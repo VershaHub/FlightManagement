@@ -1,0 +1,525 @@
+package flight.program;
+
+import java.sql.*;
+import java.util.Scanner;
+
+public class Flight_Management {
+
+    private static final String URL = "jdbc:mysql://localhost:3306/FlightManagement";
+    private static final String USER = "root";
+    private static final String PASSWORD = "pass@word1";
+
+    private Connection conn;
+    private Scanner scanner;
+
+    // Track logged-in user
+    private int loggedInUserId = -1;
+    private String loggedInRole = "";
+
+    // Constructor
+    public Flight_Management() {
+        scanner = new Scanner(System.in);
+        try {
+            conn = DriverManager.getConnection(URL, USER, PASSWORD);
+            System.out.println("✅ Database connected successfully.");
+        } catch (SQLException e) {
+            e.printStackTrace();
+            System.out.println("❌ Cannot connect to database.");
+        }
+    }
+
+    // ================== MAIN METHOD ==================
+    public static void main(String[] args) {
+        Flight_Management app = new Flight_Management();
+        if (!app.testConnection()) {
+            System.out.println("❌ Exiting because DB connection failed.");
+            return;
+        }
+        app.mainMenu();
+    }
+
+    // ================== CONNECTION TEST ==================
+    public boolean testConnection() {
+        return conn != null;
+    }
+
+    // ================== MAIN MENU ==================
+    public void mainMenu() {
+        while (true) {
+            System.out.println("\n===== FLIGHT MANAGEMENT SYSTEM =====");
+            System.out.println("1. User Menu");
+            System.out.println("2. Admin Menu");
+            System.out.println("3. Exit");
+            System.out.print("Enter choice: ");
+            int choice = scanner.nextInt();
+            scanner.nextLine();
+
+            switch (choice) {
+                case 1:
+                    userMenu();
+                    break;
+                case 2:
+                    adminMenu();
+                    break;
+                case 3:
+                    System.out.println("👋 Exiting system. Goodbye!");
+                    return;
+                default:
+                    System.out.println("❌ Invalid choice.");
+            }
+        }
+    }
+
+    // ================== USER MENU ==================
+    public void userMenu() {
+        while (true) {
+            System.out.println("\n----- USER MENU -----");
+            System.out.println("1. Register User");
+            System.out.println("2. Login");
+            System.out.println("3. Search Flights");
+            System.out.println("4. Booking Menu");
+            System.out.println("5. Logout / Back to Main Menu");
+            System.out.print("Enter choice: ");
+            int choice = scanner.nextInt();
+            scanner.nextLine();
+
+            switch (choice) {
+                case 1:
+                    addNewUser();
+                    break;
+                case 2:
+                    loginUser("PASSENGER");
+                    break;
+                case 3:
+                    if (loggedInUserId != -1 && "PASSENGER".equalsIgnoreCase(loggedInRole)) {
+                        fetchFlights();
+                    } else {
+                        System.out.println("❌ Please login first to search flights.");
+                    }
+                    break;
+                case 4:
+                    if (loggedInUserId != -1 && "PASSENGER".equalsIgnoreCase(loggedInRole)) {
+                        bookingMenu();
+                    } else {
+                        System.out.println("❌ Please login first to access booking menu.");
+                    }
+                    break;
+                case 5:
+                    loggedInUserId = -1;
+                    loggedInRole = "";
+                    return;
+                default:
+                    System.out.println("❌ Invalid choice.");
+            }
+        }
+    }
+
+    // ================== ADMIN MENU ==================
+    public void adminMenu() {
+        if (loggedInUserId == -1 || !"ADMIN".equalsIgnoreCase(loggedInRole)) {
+            System.out.println("❌ Please login as Admin to access this menu.");
+            loginUser("ADMIN");
+            if (loggedInUserId == -1) return; // failed login
+        }
+
+        while (true) {
+            System.out.println("\n----- ADMIN DASHBOARD -----");
+            System.out.println("1. Add Flight");
+            System.out.println("2. Update Flight");
+            System.out.println("3. Remove Flight");
+            System.out.println("4. Add Flight Schedule");
+            System.out.println("5. Modify Flight Schedule");
+            System.out.println("6. View All Bookings");
+            System.out.println("7. Logout / Back to Main Menu");
+            System.out.print("Enter choice: ");
+            int choice = scanner.nextInt();
+            scanner.nextLine();
+
+            switch (choice) {
+                case 1:
+                    addFlight();
+                    break;
+                case 2:
+                    updateFlight();
+                    break;
+                case 3:
+                    removeFlight();
+                    break;
+                case 4:
+                    addFlightSchedule();
+                    break;
+                case 5:
+                    modifyFlightSchedule();
+                    break;
+                case 6:
+                    viewAllBookings();
+                    break;
+                case 7:
+                    loggedInUserId = -1;
+                    loggedInRole = "";
+                    return;
+                default:
+                    System.out.println("❌ Invalid choice.");
+            }
+        }
+    }
+
+    // ================== BOOKING MENU ==================
+    public void bookingMenu() {
+        while (true) {
+            System.out.println("\n----- BOOKING MENU -----");
+            System.out.println("1. Add Booking");
+            System.out.println("2. Update Booking");
+            System.out.println("3. Cancel Booking");
+            System.out.println("4. View My Booking History");
+            System.out.println("5. Back to User Menu");
+            System.out.print("Enter choice: ");
+            int choice = scanner.nextInt();
+            scanner.nextLine();
+
+            switch (choice) {
+                case 1:
+                    addBooking();
+                    break;
+                case 2:
+                    updateBooking();
+                    break;
+                case 3:
+                    deleteBooking();
+                    break;
+                case 4:
+                    viewBookings();
+                    break;
+                case 5:
+                    return;
+                default:
+                    System.out.println("❌ Invalid choice.");
+            }
+        }
+    }
+
+    // ================== LOGIN MODULE ==================
+    public void loginUser(String expectedRole) {
+        try {
+            System.out.print("Enter username: ");
+            String username = scanner.nextLine();
+            System.out.print("Enter password: ");
+            String password = scanner.nextLine();
+
+            String sql = "SELECT * FROM users WHERE username = ? AND password = ? AND role = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, username);
+            pstmt.setString(2, password);
+            pstmt.setString(3, expectedRole);
+            ResultSet rs = pstmt.executeQuery();
+
+            if (rs.next()) {
+                loggedInUserId = rs.getInt("user_id");
+                loggedInRole = rs.getString("role");
+                System.out.println("✅ Login successful! Logged in as " + loggedInRole);
+            } else {
+                System.out.println("❌ Invalid credentials or role.");
+                loggedInUserId = -1;
+                loggedInRole = "";
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // ================== USER MODULE ==================
+    public void addNewUser() {
+        try {
+            System.out.print("Enter username: ");
+            String username = scanner.nextLine();
+            System.out.print("Enter password: ");
+            String password = scanner.nextLine();
+            System.out.print("Enter email: ");
+            String email = scanner.nextLine();
+            System.out.print("Enter phone: ");
+            String phone = scanner.nextLine();
+
+            String sql = "INSERT INTO users (username, password, email, phone, role) VALUES (?, ?, ?, ?, 'PASSENGER')";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, username);
+            pstmt.setString(2, password);
+            pstmt.setString(3, email);
+            pstmt.setString(4, phone);
+            pstmt.executeUpdate();
+
+            System.out.println("✅ User registered successfully!");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void fetchFlights() {
+        try {
+            System.out.print("Enter source: ");
+            String source = scanner.nextLine();
+            System.out.print("Enter destination: ");
+            String destination = scanner.nextLine();
+
+            String sql = "SELECT f.flight_id, f.airline, f.source, f.destination, f.total_seats, "
+                    + "s.schedule_id, s.departure_time, s.arrival_time, s.available_seats "
+                    + "FROM flights f "
+                    + "LEFT JOIN schedules s ON f.flight_id = s.flight_id "
+                    + "WHERE f.source = ? AND f.destination = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, source);
+            pstmt.setString(2, destination);
+            ResultSet rs = pstmt.executeQuery();
+
+            System.out.println("\nAvailable Flights:");
+            while (rs.next()) {
+                System.out.println("Flight ID: " + rs.getInt("flight_id") +
+                        ", Airline: " + rs.getString("airline") +
+                        ", Source: " + rs.getString("source") +
+                        ", Destination: " + rs.getString("destination") +
+                        ", Seats: " + rs.getInt("total_seats") +
+                        ", Schedule ID: " + rs.getInt("schedule_id") +
+                        ", Departure: " + rs.getString("departure_time") +
+                        ", Arrival: " + rs.getString("arrival_time") +
+                        ", Available Seats: " + rs.getInt("available_seats"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // ================== ADMIN MODULE ==================
+    public void addFlight() {
+        try {
+            System.out.print("Enter airline: ");
+            String airline = scanner.nextLine();
+            System.out.print("Enter source: ");
+            String source = scanner.nextLine();
+            System.out.print("Enter destination: ");
+            String destination = scanner.nextLine();
+            System.out.print("Enter total seats: ");
+            int seats = scanner.nextInt();
+            scanner.nextLine();
+
+            String sql = "INSERT INTO flights (airline, source, destination, total_seats) VALUES (?, ?, ?, ?)";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, airline);
+            pstmt.setString(2, source);
+            pstmt.setString(3, destination);
+            pstmt.setInt(4, seats);
+            pstmt.executeUpdate();
+
+            System.out.println("✅ Flight added successfully!");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void updateFlight() {
+        try {
+            System.out.print("Enter flight ID to update: ");
+            int id = scanner.nextInt();
+            scanner.nextLine();
+            System.out.print("Enter new airline: ");
+            String airline = scanner.nextLine();
+
+            String sql = "UPDATE flights SET airline = ? WHERE flight_id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, airline);
+            pstmt.setInt(2, id);
+            pstmt.executeUpdate();
+
+            System.out.println("✅ Flight updated successfully!");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void removeFlight() {
+        try {
+            System.out.print("Enter flight ID to remove: ");
+            int id = scanner.nextInt();
+
+            String sql = "DELETE FROM flights WHERE flight_id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, id);
+            pstmt.executeUpdate();
+
+            System.out.println("✅ Flight removed successfully!");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void addFlightSchedule() {
+        try {
+            System.out.print("Enter flight ID: ");
+            int flightId = scanner.nextInt();
+            scanner.nextLine();
+            System.out.print("Enter departure time (YYYY-MM-DD HH:MM:SS): ");
+            String departure = scanner.nextLine();
+            System.out.print("Enter arrival time (YYYY-MM-DD HH:MM:SS): ");
+            String arrival = scanner.nextLine();
+            System.out.print("Enter available seats: ");
+            int seats = scanner.nextInt();
+            scanner.nextLine();
+
+            String sql = "INSERT INTO schedules (flight_id, departure_time, arrival_time, available_seats) VALUES (?, ?, ?, ?)";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, flightId);
+            pstmt.setString(2, departure);
+            pstmt.setString(3, arrival);
+            pstmt.setInt(4, seats);
+            pstmt.executeUpdate();
+
+            System.out.println("✅ Flight schedule added successfully!");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void modifyFlightSchedule() {
+        try {
+            System.out.print("Enter schedule ID to modify: ");
+            int id = scanner.nextInt();
+            scanner.nextLine();
+            System.out.print("Enter new available seats: ");
+            int seats = scanner.nextInt();
+
+            String sql = "UPDATE schedules SET available_seats = ? WHERE schedule_id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, seats);
+            pstmt.setInt(2, id);
+            pstmt.executeUpdate();
+
+            System.out.println("✅ Flight schedule updated successfully!");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void viewAllBookings() {
+        try {
+            String sql = "SELECT * FROM bookings";
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(sql);
+
+            System.out.println("\nAll Bookings:");
+            while (rs.next()) {
+                System.out.println("Booking ID: " + rs.getInt("booking_id") +
+                        ", User ID: " + rs.getInt("user_id") +
+                        ", Schedule ID: " + rs.getInt("schedule_id") +
+                        ", Seats: " + rs.getInt("seats_booked") +
+                        ", Status: " + rs.getString("status"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // ================== BOOKING MODULE ==================
+    public void addBooking() {
+        try {
+            if (loggedInUserId == -1 || !"PASSENGER".equalsIgnoreCase(loggedInRole)) {
+                System.out.println("❌ You must be logged in as a Passenger to book.");
+                return;
+            }
+
+            System.out.print("Enter schedule ID: ");
+            int scheduleId = scanner.nextInt();
+            System.out.print("Enter number of seats: ");
+            int seats = scanner.nextInt();
+
+            // Check availability
+            String check = "SELECT available_seats FROM schedules WHERE schedule_id = ?";
+            PreparedStatement checkStmt = conn.prepareStatement(check);
+            checkStmt.setInt(1, scheduleId);
+            ResultSet rs = checkStmt.executeQuery();
+            if (rs.next()) {
+                int available = rs.getInt("available_seats");
+                if (available < seats) {
+                    System.out.println("❌ Not enough seats available.");
+                    return;
+                }
+            } else {
+                System.out.println("❌ Schedule ID not found.");
+                return;
+            }
+
+            String sql = "INSERT INTO bookings (user_id, schedule_id, seats_booked, status) VALUES (?, ?, ?, 'CONFIRMED')";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, loggedInUserId);
+            pstmt.setInt(2, scheduleId);
+            pstmt.setInt(3, seats);
+            pstmt.executeUpdate();
+
+            String updateSeats = "UPDATE schedules SET available_seats = available_seats - ? WHERE schedule_id = ?";
+            PreparedStatement pstmt2 = conn.prepareStatement(updateSeats);
+            pstmt2.setInt(1, seats);
+            pstmt2.setInt(2, scheduleId);
+            pstmt2.executeUpdate();
+
+            System.out.println("✅ Booking successful!");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void updateBooking() {
+        try {
+            System.out.print("Enter booking ID to update: ");
+            int bookingId = scanner.nextInt();
+            System.out.print("Enter new number of seats: ");
+            int seats = scanner.nextInt();
+
+            String sql = "UPDATE bookings SET seats_booked = ? WHERE booking_id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, seats);
+            pstmt.setInt(2, bookingId);
+            pstmt.executeUpdate();
+
+            System.out.println("✅ Booking updated successfully!");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void deleteBooking() {
+        try {
+            System.out.print("Enter booking ID to cancel: ");
+            int bookingId = scanner.nextInt();
+
+            String sql = "UPDATE bookings SET status = 'CANCELLED' WHERE booking_id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, bookingId);
+            pstmt.executeUpdate();
+
+            System.out.println("✅ Booking cancelled successfully!");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void viewBookings() {
+        try {
+            if (loggedInUserId == -1) {
+                System.out.println("❌ Please login first.");
+                return;
+            }
+
+            String sql = "SELECT * FROM bookings WHERE user_id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, loggedInUserId);
+            ResultSet rs = pstmt.executeQuery();
+
+            System.out.println("\nYour Booking History:");
+            while (rs.next()) {
+                System.out.println("Booking ID: " + rs.getInt("booking_id") +
+                        ", Schedule ID: " + rs.getInt("schedule_id") +
+                        ", Seats: " + rs.getInt("seats_booked") +
+                        ", Status: " + rs.getString("status"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}
